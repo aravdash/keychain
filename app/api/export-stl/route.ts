@@ -23,8 +23,17 @@ export async function POST(request: NextRequest) {
       throw new Error(`Backend responded with status: ${response.status}`)
     }
 
-    const result = await response.json()
-    return NextResponse.json(result)
+    // Get binary data from backend instead of parsing as JSON
+    const binaryData = await response.arrayBuffer()
+    
+    // Return binary STL data with proper headers
+    return new NextResponse(binaryData, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${name || 'keychain'}-keychain.stl"`,
+      },
+    })
 
   } catch (error) {
     console.error('STL export error:', error)
