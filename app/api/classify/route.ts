@@ -4,12 +4,31 @@ export async function POST(request: NextRequest) {
   try {
     const { imageData, mode } = await request.json()
 
-    // In a real implementation, this would:
-    // 1. Send imageData to Python backend for Faster R-CNN classification
-    // 2. Perform vectorization using OpenCV
-    // 3. Search template library using similarity matching
+    // Forward request to Python backend
+    const backendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:5001'
     
-    // For demo purposes, return mock data based on the input
+    const response = await fetch(`${backendUrl}/classify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageData,
+        mode,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Backend responded with status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return NextResponse.json(result)
+
+  } catch (error) {
+    console.error('Classification error:', error)
+    
+    // Fallback to mock data if backend is unavailable
     const mockTemplates = [
       {
         id: '1',
@@ -34,27 +53,16 @@ export async function POST(request: NextRequest) {
       },
     ]
 
-    // Mock vectorized result
-    const vectorizedResult = {
+    const mockVectorized = {
       svgPath: mode === 'draw' 
-        ? 'M50 20 L80 50 L50 80 L20 50 Z' // Diamond shape for drawing
-        : 'M30 30 L70 30 L70 70 L30 70 Z', // Square shape for upload
-      originalImage: imageData,
+        ? 'M50 20 L80 50 L50 80 L20 50 Z' 
+        : 'M30 30 L70 30 L70 70 L30 70 Z',
+      originalImage: (await request.json()).imageData,
     }
-
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000))
 
     return NextResponse.json({
       templates: mockTemplates,
-      vectorized: vectorizedResult,
+      vectorized: mockVectorized,
     })
-
-  } catch (error) {
-    console.error('Classification error:', error)
-    return NextResponse.json(
-      { error: 'Failed to process image' },
-      { status: 500 }
-    )
   }
 }

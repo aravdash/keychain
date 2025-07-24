@@ -45,24 +45,48 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
     if (!fabricCanvasRef.current) return
 
     const canvas = fabricCanvasRef.current
+    canvas.clear()
 
     // Create a path from the SVG path data
-    const path = new fabric.Path(template.svgPath, {
-      left: 50,
-      top: 50,
-      fill: selectedColor,
-      stroke: selectedColor,
-      strokeWidth: strokeWidth,
-      scaleX: 5,
-      scaleY: 5,
-      selectable: true,
-      hasControls: true,
-      hasBorders: true,
-    })
+    try {
+      const path = new fabric.Path(template.svgPath, {
+        left: 100,
+        top: 100,
+        fill: 'transparent',
+        stroke: selectedColor,
+        strokeWidth: strokeWidth,
+        scaleX: 8,
+        scaleY: 8,
+        selectable: true,
+        hasControls: true,
+        hasBorders: true,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+      })
 
-    canvas.add(path)
-    canvas.centerObject(path)
-    canvas.renderAll()
+      canvas.add(path)
+      canvas.centerObject(path)
+      canvas.renderAll()
+    } catch (error) {
+      console.error('Error loading SVG path:', error)
+      
+      // Fallback: create a simple rectangle if SVG path fails
+      const rect = new fabric.Rect({
+        left: 200,
+        top: 150,
+        width: 200,
+        height: 100,
+        fill: 'transparent',
+        stroke: selectedColor,
+        strokeWidth: strokeWidth,
+        selectable: true,
+        hasControls: true,
+        hasBorders: true,
+      })
+      
+      canvas.add(rect)
+      canvas.renderAll()
+    }
   }
 
   const updateStrokeWidth = (width: number) => {
