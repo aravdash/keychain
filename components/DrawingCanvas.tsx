@@ -21,69 +21,84 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (canvasRef.current && !fabricCanvasRef.current) {
-      const canvas = new fabric.Canvas(canvasRef.current, {
-        isDrawingMode: true,
-        width: 600,
-        height: 400,
-        backgroundColor: 'white',
-        preserveObjectStacking: true,
-      })
-
-      canvas.freeDrawingBrush.width = brushSize
-      canvas.freeDrawingBrush.color = '#000000'
-      canvas.freeDrawingBrush.strokeLineCap = 'round'
-      canvas.freeDrawingBrush.strokeLineJoin = 'round'
-      
-      // Ensure drawings persist
-      canvas.on('path:created', (e) => {
-        console.log('Path created:', e.path)
-        setIsDrawing(true)
-        // Force canvas to render and maintain the drawing
-        if (canvas && canvas.getContext) {
-          canvas.renderAll()
-          canvas.calcOffset()
-        }
-      })
-
-      // Prevent canvas from clearing drawings
-      canvas.on('before:render', () => {
-        if (canvas) {
-          canvas.preserveObjectStacking = true
-        }
-      })
-
-      fabricCanvasRef.current = canvas
-      
-      // Force initial render with safety checks
-      setTimeout(() => {
-        if (canvas && canvas.getContext && canvas.renderAll) {
-          try {
-            canvas.renderAll()
-          } catch (error) {
-            console.warn('Canvas render error:', error)
-          }
-        }
-      }, 200) // Increased timeout for better initialization
+    // Only initialize if we have a canvas element and no existing fabric canvas
+    if (!canvasRef.current || fabricCanvasRef.current) {
+      return
     }
 
+    let canvas: fabric.Canvas | null = null
+    
+    const initializeCanvas = () => {
+      try {
+        // Create new fabric canvas
+        canvas = new fabric.Canvas(canvasRef.current!, {
+          isDrawingMode: true,
+          width: 600,
+          height: 400,
+          backgroundColor: 'white',
+          preserveObjectStacking: true,
+        })
+
+        // Configure brush
+        canvas.freeDrawingBrush.width = brushSize
+        canvas.freeDrawingBrush.color = '#000000'
+        canvas.freeDrawingBrush.strokeLineCap = 'round'
+        canvas.freeDrawingBrush.strokeLineJoin = 'round'
+        
+        // Set up event handlers
+        canvas.on('path:created', (e) => {
+          console.log('Path created:', e.path)
+          setIsDrawing(true)
+          // No need to manually call renderAll, fabric handles this
+        })
+
+        // Store canvas reference
+        fabricCanvasRef.current = canvas
+        
+        console.log('Canvas initialized successfully')
+        
+      } catch (error) {
+        console.error('Failed to initialize canvas:', error)
+        if (canvas) {
+          canvas.dispose()
+          canvas = null
+        }
+      }
+    }
+
+    // Initialize immediately
+    initializeCanvas()
+
+    // Cleanup function
     return () => {
       if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.dispose()
+        try {
+          fabricCanvasRef.current.dispose()
+        } catch (error) {
+          console.warn('Error disposing canvas:', error)
+        }
         fabricCanvasRef.current = null
       }
     }
-  }, [])
+  }, []) // Remove brushSize dependency to prevent re-initialization
 
   useEffect(() => {
-    if (fabricCanvasRef.current) {
-      fabricCanvasRef.current.freeDrawingBrush.width = brushSize
+    if (fabricCanvasRef.current && fabricCanvasRef.current.freeDrawingBrush) {
+      try {
+        fabricCanvasRef.current.freeDrawingBrush.width = brushSize
+      } catch (error) {
+        console.warn('Error updating brush size:', error)
+      }
     }
   }, [brushSize])
 
   useEffect(() => {
     if (fabricCanvasRef.current) {
-      fabricCanvasRef.current.isDrawingMode = mode === 'draw'
+      try {
+        fabricCanvasRef.current.isDrawingMode = mode === 'draw'
+      } catch (error) {
+        console.warn('Error updating drawing mode:', error)
+      }
     }
   }, [mode])
 
