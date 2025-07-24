@@ -29,35 +29,35 @@ class KeychainClassifier:
                 'name': 'Heart Keychain',
                 'category': 'romantic',
                 'svgPath': 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
-                'embedding': [0.1, 0.8, 0.3, 0.9, 0.2],  # Mock embedding
+                'embedding': [0.2, 0.1, 0.8, 0.9, 0.3],  # Low circularity, low vertices, high aspect ratio, high area, low perimeter - heart-like
             },
             {
                 'id': '2',
                 'name': 'Star Keychain',
                 'category': 'celestial',
                 'svgPath': 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
-                'embedding': [0.9, 0.1, 0.7, 0.2, 0.8],  # Mock embedding
+                'embedding': [0.1, 0.9, 0.4, 0.7, 0.8],  # Low circularity, high vertices (star points), medium aspect ratio
             },
             {
                 'id': '3',
                 'name': 'Circle Keychain',
                 'category': 'geometric',
                 'svgPath': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z',
-                'embedding': [0.5, 0.5, 0.9, 0.1, 0.6],  # Mock embedding
+                'embedding': [0.95, 0.1, 0.3, 0.6, 0.5],  # High circularity, low vertices, low aspect ratio - circle-like
             },
             {
                 'id': '4',
                 'name': 'Lightning Keychain',
                 'category': 'dynamic',
                 'svgPath': 'M11 4l-7 9h5v7l7-9h-5V4z',
-                'embedding': [0.8, 0.3, 0.1, 0.9, 0.4],  # Mock embedding
+                'embedding': [0.1, 0.4, 0.9, 0.5, 0.7],  # Low circularity, medium vertices, high aspect ratio - jagged
             },
             {
                 'id': '5',
                 'name': 'Flower Keychain',
                 'category': 'nature',
                 'svgPath': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z',
-                'embedding': [0.2, 0.9, 0.4, 0.6, 0.8],  # Mock embedding
+                'embedding': [0.7, 0.6, 0.4, 0.8, 0.6],  # Medium-high circularity, medium vertices, medium aspect ratio - flower-like
             },
         ]
 
@@ -118,13 +118,28 @@ def extract_features(image):
     x, y, w, h = cv2.boundingRect(largest_contour)
     aspect_ratio = float(w) / h if h > 0 else 1
     
+    # Detect heart-like characteristics
+    # Hearts typically have two rounded tops and a pointed bottom
+    heart_score = 0.0
+    if aspect_ratio > 0.7 and aspect_ratio < 1.3:  # Roughly square-ish
+        # Check for concavity at the top (heart indent)
+        hull = cv2.convexHull(largest_contour, returnPoints=False)
+        defects = cv2.convexityDefects(largest_contour, hull)
+        
+        if defects is not None and len(defects) > 0:
+            # Look for significant defects (indentations)
+            for defect in defects:
+                s, e, f, d = defect[0]
+                if d > 1000:  # Significant defect depth
+                    heart_score += 0.3
+    
     # Create feature vector based on shape characteristics
     features = [
         circularity,  # 0-1, higher for circular shapes
         min(num_vertices / 10.0, 1.0),  # normalized vertex count
         aspect_ratio / 3.0,  # normalized aspect ratio
         area / (image.shape[0] * image.shape[1]),  # relative area
-        perimeter / (2 * (image.shape[0] + image.shape[1]))  # relative perimeter
+        min(heart_score, 1.0)  # heart-like characteristics
     ]
     
     return features

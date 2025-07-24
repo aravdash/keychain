@@ -46,17 +46,22 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
 
     const canvas = fabricCanvasRef.current
     canvas.clear()
+    canvas.backgroundColor = 'white'
 
     // Create a path from the SVG path data
     try {
+      console.log('Loading template:', template.name, 'SVG:', template.svgPath)
+      
+      // The SVG paths from the backend are designed for smaller coordinate systems
+      // We need to scale and position them properly
       const path = new fabric.Path(template.svgPath, {
-        left: 100,
-        top: 100,
+        left: 0,
+        top: 0,
         fill: 'transparent',
         stroke: selectedColor,
         strokeWidth: strokeWidth,
-        scaleX: 8,
-        scaleY: 8,
+        scaleX: 15, // Increased scale for better visibility
+        scaleY: 15,
         selectable: true,
         hasControls: true,
         hasBorders: true,
@@ -67,24 +72,42 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
       canvas.add(path)
       canvas.centerObject(path)
       canvas.renderAll()
+      
+      console.log('Template loaded successfully')
     } catch (error) {
       console.error('Error loading SVG path:', error)
+      console.log('Fallback: Creating simple shape for template:', template.name)
       
-      // Fallback: create a simple rectangle if SVG path fails
-      const rect = new fabric.Rect({
-        left: 200,
-        top: 150,
-        width: 200,
-        height: 100,
-        fill: 'transparent',
-        stroke: selectedColor,
-        strokeWidth: strokeWidth,
-        selectable: true,
-        hasControls: true,
-        hasBorders: true,
-      })
+      // Fallback: create different shapes based on template name
+      let fallbackShape;
       
-      canvas.add(rect)
+      if (template.name.toLowerCase().includes('heart')) {
+        // Create a heart-like shape
+        fallbackShape = new fabric.Path('M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 C2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 C19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z', {
+          left: 200, top: 150, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          scaleX: 8, scaleY: 8, selectable: true, hasControls: true, hasBorders: true,
+        })
+      } else if (template.name.toLowerCase().includes('star')) {
+        // Create a star shape
+        fallbackShape = new fabric.Path('M12,2l3.09,6.26L22,9.27l-5,4.87 l1.18,6.88L12,17.77l-6.18,3.25L7,14.14 L2,9.27l6.91-1.01L12,2z', {
+          left: 200, top: 150, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          scaleX: 8, scaleY: 8, selectable: true, hasControls: true, hasBorders: true,
+        })
+      } else if (template.name.toLowerCase().includes('circle')) {
+        // Create a circle
+        fallbackShape = new fabric.Circle({
+          left: 250, top: 150, radius: 50, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          selectable: true, hasControls: true, hasBorders: true,
+        })
+      } else {
+        // Default rectangle
+        fallbackShape = new fabric.Rect({
+          left: 200, top: 150, width: 200, height: 100, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          selectable: true, hasControls: true, hasBorders: true,
+        })
+      }
+      
+      canvas.add(fallbackShape)
       canvas.renderAll()
     }
   }
@@ -92,8 +115,14 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
   const updateStrokeWidth = (width: number) => {
     setStrokeWidth(width)
     if (fabricCanvasRef.current) {
+      // Update brush width if in drawing mode
+      if (fabricCanvasRef.current.isDrawingMode) {
+        fabricCanvasRef.current.freeDrawingBrush.width = width
+      }
+      
+      // Update selected object stroke width
       const activeObject = fabricCanvasRef.current.getActiveObject()
-      if (activeObject && activeObject.type === 'path') {
+      if (activeObject && (activeObject.type === 'path' || activeObject.type === 'rect' || activeObject.type === 'circle')) {
         activeObject.set('strokeWidth', width)
         fabricCanvasRef.current.renderAll()
       }
@@ -103,10 +132,22 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
   const updateColor = (color: string) => {
     setSelectedColor(color)
     if (fabricCanvasRef.current) {
+      // Update brush color if in drawing mode
+      if (fabricCanvasRef.current.isDrawingMode) {
+        fabricCanvasRef.current.freeDrawingBrush.color = color
+      }
+      
+      // Update selected object color
       const activeObject = fabricCanvasRef.current.getActiveObject()
       if (activeObject) {
-        activeObject.set('fill', color)
-        activeObject.set('stroke', color)
+        if (activeObject.type === 'text') {
+          activeObject.set('fill', color)
+        } else {
+          activeObject.set('stroke', color)
+          if (activeObject.fill !== 'transparent') {
+            activeObject.set('fill', color)
+          }
+        }
         fabricCanvasRef.current.renderAll()
       }
     }
@@ -193,6 +234,24 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
     }
   }
 
+  const enableDrawingMode = () => {
+    if (fabricCanvasRef.current) {
+      fabricCanvasRef.current.isDrawingMode = true
+      fabricCanvasRef.current.freeDrawingBrush.width = strokeWidth
+      fabricCanvasRef.current.freeDrawingBrush.color = selectedColor
+      fabricCanvasRef.current.freeDrawingBrush.strokeLineCap = 'round'
+      fabricCanvasRef.current.freeDrawingBrush.strokeLineJoin = 'round'
+      console.log('Drawing mode enabled')
+    }
+  }
+
+  const disableDrawingMode = () => {
+    if (fabricCanvasRef.current) {
+      fabricCanvasRef.current.isDrawingMode = false
+      console.log('Drawing mode disabled')
+    }
+  }
+
   const colors = [
     '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', 
     '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#FFC0CB'
@@ -226,6 +285,30 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Controls Panel */}
         <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white rounded-lg p-6 shadow-sm border">
+            <h3 className="font-medium text-gray-900 mb-4">Drawing Mode</h3>
+            <div className="space-y-2">
+              <button
+                onClick={enableDrawingMode}
+                className="flex items-center gap-2 w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Enable Drawing
+              </button>
+              <button
+                onClick={disableDrawingMode}
+                className="flex items-center gap-2 w-full px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                </svg>
+                Select Mode
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white rounded-lg p-6 shadow-sm border">
             <h3 className="font-medium text-gray-900 mb-4">Stroke Width</h3>
             <div className="flex items-center gap-2 mb-3">
