@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  keychain-app:
+    build: .
+    ports:
+      - "3000:3000"  # Next.js frontend
+      - "5000:5000"  # Python backend
+    environment:
+      - NODE_ENV=production
+      - PYTHON_ENV=production
+    volumes:
+      - ./uploads:/app/uploads
+      - ./models:/app/python-backend/models
+    restart: unless-stopped
+
+  # Development services
+  keychain-dev:
+    build: .
+    ports:
+      - "3001:3000"
+      - "5001:5000"
+    environment:
+      - NODE_ENV=development
+      - PYTHON_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/python-backend/__pycache__
+    command: >
+      sh -c "cd /app/python-backend && python app.py &
+             cd /app && npm run dev"
+    profiles:
+      - dev
+
+  # Optional: Redis for caching (production)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    profiles:
+      - production
+
+volumes:
+  redis_data:
