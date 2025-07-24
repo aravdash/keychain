@@ -19,167 +19,129 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
   const [isDrawing, setIsDrawing] = useState(false)
   const [brushSize, setBrushSize] = useState(5)
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [canvasReady, setCanvasReady] = useState(false)
 
+  // Initialize canvas once
   useEffect(() => {
-    // Only initialize if we have a canvas element and no existing fabric canvas
-    if (!canvasRef.current || fabricCanvasRef.current) {
-      return
-    }
+    if (!canvasRef.current || fabricCanvasRef.current) return
 
-    let canvas: fabric.Canvas | null = null
-    
-    const initializeCanvas = () => {
+    const initCanvas = async () => {
       try {
-        // Create new fabric canvas
-        canvas = new fabric.Canvas(canvasRef.current!, {
-          isDrawingMode: true,
+        console.log('Initializing canvas...')
+        
+        const canvas = new fabric.Canvas(canvasRef.current!, {
+          isDrawingMode: mode === 'draw',
           width: 600,
           height: 400,
-          backgroundColor: 'white',
-          preserveObjectStacking: true,
+          backgroundColor: '#ffffff',
         })
 
-        // Configure brush
+        // Configure drawing brush
         canvas.freeDrawingBrush.width = brushSize
         canvas.freeDrawingBrush.color = '#000000'
-        canvas.freeDrawingBrush.strokeLineCap = 'round'
-        canvas.freeDrawingBrush.strokeLineJoin = 'round'
         
-        // Set up event handlers
+        // Event handlers
         canvas.on('path:created', (e) => {
-          console.log('Path created:', e.path)
+          console.log('Drawing path created')
           setIsDrawing(true)
-          // No need to manually call renderAll, fabric handles this
+        })
+        
+        canvas.on('object:added', () => {
+          setIsDrawing(true)
         })
 
-        // Store canvas reference
         fabricCanvasRef.current = canvas
+        setCanvasReady(true)
         
         console.log('Canvas initialized successfully')
-        
       } catch (error) {
-        console.error('Failed to initialize canvas:', error)
-        if (canvas) {
-          canvas.dispose()
-          canvas = null
-        }
+        console.error('Canvas initialization error:', error)
       }
     }
 
-    // Initialize immediately
-    initializeCanvas()
+    initCanvas()
 
-    // Cleanup function
     return () => {
       if (fabricCanvasRef.current) {
-        try {
-          fabricCanvasRef.current.dispose()
-        } catch (error) {
-          console.warn('Error disposing canvas:', error)
-        }
+        fabricCanvasRef.current.dispose()
         fabricCanvasRef.current = null
       }
+      setCanvasReady(false)
     }
-  }, []) // Remove brushSize dependency to prevent re-initialization
+  }, [])
 
+  // Update brush size
   useEffect(() => {
-    if (fabricCanvasRef.current && fabricCanvasRef.current.freeDrawingBrush) {
-      try {
-        fabricCanvasRef.current.freeDrawingBrush.width = brushSize
-      } catch (error) {
-        console.warn('Error updating brush size:', error)
-      }
+    if (fabricCanvasRef.current && canvasReady) {
+      fabricCanvasRef.current.freeDrawingBrush.width = brushSize
     }
-  }, [brushSize])
+  }, [brushSize, canvasReady])
 
+  // Update drawing mode
   useEffect(() => {
-    if (fabricCanvasRef.current) {
-      try {
-        fabricCanvasRef.current.isDrawingMode = mode === 'draw'
-      } catch (error) {
-        console.warn('Error updating drawing mode:', error)
-      }
+    if (fabricCanvasRef.current && canvasReady) {
+      fabricCanvasRef.current.isDrawingMode = mode === 'draw'
     }
-  }, [mode])
+  }, [mode, canvasReady])
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file && (file.type === 'image/png' || file.type === 'image/jpeg')) {
+    if (!file || !fabricCanvasRef.current || !canvasReady) return
+
+    if (file.type === 'image/png' || file.type === 'image/jpeg') {
       const reader = new FileReader()
       reader.onload = (e) => {
         const imageUrl = e.target?.result as string
         setUploadedImage(imageUrl)
         
-        if (fabricCanvasRef.current) {
-          fabric.Image.fromURL(imageUrl, (img) => {
-            if (fabricCanvasRef.current && fabricCanvasRef.current.getContext) {
-              fabricCanvasRef.current.clear()
-              
-              // Scale image to fit canvas
-              const canvas = fabricCanvasRef.current
-              const canvasWidth = canvas.getWidth()
-              const canvasHeight = canvas.getHeight()
-              
-              const scale = Math.min(
-                canvasWidth / (img.width || 1),
-                canvasHeight / (img.height || 1)
-              ) * 0.8
-              
-              img.scale(scale)
-              img.center()
-              canvas.add(img)
-              
-              // Safe render
-              try {
-                canvas.renderAll()
-                setIsDrawing(true)
-              } catch (error) {
-                console.warn('Canvas render error during image upload:', error)
-              }
-            }
-          })
-        }
+        fabric.Image.fromURL(imageUrl, (img) => {
+          if (!fabricCanvasRef.current) return
+          
+          fabricCanvasRef.current.clear()
+          
+          // Scale image to fit canvas
+          const canvas = fabricCanvasRef.current
+          const canvasWidth = canvas.getWidth()
+          const canvasHeight = canvas.getHeight()
+          
+          const scale = Math.min(
+            canvasWidth / (img.width || 1),
+            canvasHeight / (img.height || 1)
+          ) * 0.8
+          
+          img.scale(scale)
+          img.center()
+          canvas.add(img)
+          canvas.renderAll()
+          setIsDrawing(true)
+        })
       }
       reader.readAsDataURL(file)
     }
   }
 
   const clearCanvas = () => {
-    if (fabricCanvasRef.current && fabricCanvasRef.current.getContext) {
-      try {
-        fabricCanvasRef.current.clear()
-        fabricCanvasRef.current.backgroundColor = 'white'
-        fabricCanvasRef.current.renderAll()
-        setIsDrawing(false)
-        setUploadedImage(null)
-      } catch (error) {
-        console.warn('Canvas clear error:', error)
-        setIsDrawing(false)
-        setUploadedImage(null)
-      }
-    }
+    if (!fabricCanvasRef.current || !canvasReady) return
+    
+    fabricCanvasRef.current.clear()
+    fabricCanvasRef.current.backgroundColor = '#ffffff'
+    fabricCanvasRef.current.renderAll()
+    setIsDrawing(false)
+    setUploadedImage(null)
   }
 
   const processImage = async () => {
-    if (!fabricCanvasRef.current || !isDrawing) return
-
-    // Additional safety check
-    if (!fabricCanvasRef.current.getContext) {
-      console.warn('Canvas not ready for processing')
-      return
-    }
+    if (!fabricCanvasRef.current || !isDrawing || !canvasReady) return
 
     onProcessingChange(true)
 
     try {
-      // Convert canvas to image data with safety check
+      // Get canvas data
       const imageData = fabricCanvasRef.current.toDataURL('image/png')
       
-      if (!imageData || imageData === 'data:,') {
-        throw new Error('Canvas is empty or not ready')
-      }
+      console.log('Sending image for classification...')
       
-      // Send to backend for classification and vectorization
+      // Send to API
       const response = await fetch('/api/classify', {
         method: 'POST',
         headers: {
@@ -192,14 +154,17 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
       })
 
       if (!response.ok) {
-        throw new Error('Failed to process image')
+        throw new Error(`API Error: ${response.status}`)
       }
 
       const result = await response.json()
+      console.log('Classification result:', result)
       onResult(result)
+      
     } catch (error) {
-      console.error('Error processing image:', error)
-      // Mock result for demo purposes
+      console.error('Processing error:', error)
+      
+      // Fallback mock data
       const mockResult = {
         templates: [
           {
@@ -225,11 +190,13 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
           },
         ],
         vectorized: {
-          svgPath: 'M50 50 L100 100 L150 50 L100 0 Z',
-          originalImage: imageData,
+          svgPath: fabricCanvasRef.current?.toSVG() || 'M50 50 L100 100 L150 50 L100 0 Z',
+          originalImage: fabricCanvasRef.current?.toDataURL('image/png') || '',
         },
       }
       onResult(mockResult)
+    } finally {
+      onProcessingChange(false)
     }
   }
 
