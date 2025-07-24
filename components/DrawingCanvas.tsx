@@ -27,16 +27,34 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
         width: 600,
         height: 400,
         backgroundColor: 'white',
+        preserveObjectStacking: true,
       })
 
       canvas.freeDrawingBrush.width = brushSize
       canvas.freeDrawingBrush.color = '#000000'
+      canvas.freeDrawingBrush.strokeLineCap = 'round'
+      canvas.freeDrawingBrush.strokeLineJoin = 'round'
       
-      canvas.on('path:created', () => {
+      // Ensure drawings persist
+      canvas.on('path:created', (e) => {
+        console.log('Path created:', e.path)
         setIsDrawing(true)
+        // Force canvas to render and maintain the drawing
+        canvas.renderAll()
+        canvas.calcOffset()
+      })
+
+      // Prevent canvas from clearing drawings
+      canvas.on('before:render', () => {
+        canvas.preserveObjectStacking = true
       })
 
       fabricCanvasRef.current = canvas
+      
+      // Force initial render
+      setTimeout(() => {
+        canvas.renderAll()
+      }, 100)
     }
 
     return () => {

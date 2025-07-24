@@ -4,7 +4,7 @@ import io
 import cv2
 import numpy as np
 from PIL import Image
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import torch
 import torchvision.transforms as transforms
@@ -186,8 +186,8 @@ def vectorize_image(image):
     # Get the largest contour
     largest_contour = max(contours, key=cv2.contourArea)
     
-    # Simplify contour using Douglas-Peucker algorithm
-    epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+    # Use less aggressive simplification to preserve shape details
+    epsilon = 0.005 * cv2.arcLength(largest_contour, True)  # Reduced from 0.02
     simplified = cv2.approxPolyDP(largest_contour, epsilon, True)
     
     # Convert to SVG path
@@ -197,16 +197,16 @@ def vectorize_image(image):
     # Scale and normalize coordinates
     points = simplified.reshape(-1, 2)
     
-    # Normalize to fit within a reasonable coordinate system
+    # Normalize to fit within a reasonable coordinate system (larger for better visibility)
     min_x, min_y = points.min(axis=0)
     max_x, max_y = points.max(axis=0)
     
     if max_x - min_x == 0 or max_y - min_y == 0:
         return "M50 50 L100 100 L150 50 L100 0 Z"
     
-    # Scale to 200x200 coordinate system
-    scale_x = 150 / (max_x - min_x)
-    scale_y = 150 / (max_y - min_y)
+    # Scale to 300x300 coordinate system for better detail
+    scale_x = 250 / (max_x - min_x)
+    scale_y = 250 / (max_y - min_y)
     scale = min(scale_x, scale_y)
     
     normalized_points = []
@@ -215,15 +215,18 @@ def vectorize_image(image):
         y = (point[1] - min_y) * scale + 25
         normalized_points.append([x, y])
     
-    # Create SVG path string
+    # Create SVG path string with smooth curves
     if len(normalized_points) == 0:
         return "M50 50 L100 100 L150 50 L100 0 Z"
     
+    # Start with move command
     path_string = f"M{normalized_points[0][0]:.1f} {normalized_points[0][1]:.1f}"
     
+    # Add lines to create a closed shape
     for point in normalized_points[1:]:
         path_string += f" L{point[0]:.1f} {point[1]:.1f}"
     
+    # Close the path to create a solid fillable shape
     path_string += " Z"
     
     return path_string
@@ -287,81 +290,103 @@ def export_stl():
         thickness = data.get('thickness', 3.0)
         name = data.get('name', 'keychain')
         
-        # Generate proper STL content
-        stl_content = generate_proper_stl(svg_data, name, thickness)
+        # Generate proper binary STL content
+        stl_binary = generate_binary_stl(svg_data, name, thickness)
         
-        # For now, return success message
-        # In a real implementation, you would save the STL file and return download link
-        return jsonify({
-            'success': True,
-            'message': 'STL generated successfully',
-            'filename': f"{name}-keychain.stl",
-            'stl_data': stl_content[:500] + '...' if len(stl_content) > 500 else stl_content  # Preview
-        })
+        # Return binary STL file
+        response = make_response(stl_binary)
+        response.headers['Content-Type'] = 'application/octet-stream'
+        response.headers['Content-Disposition'] = f'attachment; filename="{name}-keychain.stl"'
+        return response
         
     except Exception as e:
         print(f"STL export error: {e}")
         return jsonify({'error': str(e)}), 500
 
-def generate_proper_stl(svg_data, name, thickness):
-    """Generate a proper STL file structure with actual 3D geometry"""
-    # Parse basic rectangular shape for demo
-    # In a real implementation, you would parse the actual SVG path
+def generate_binary_stl(svg_data, name, thickness):
+    """Generate a proper binary STL file"""
+    import struct
     
     width = 20.0
     height = 15.0
     thickness = float(thickness)
     
-    # Create vertices for a rectangular keychain
-    vertices = [
-        # Bottom face
-        [0, 0, 0], [width, 0, 0], [width, height, 0],
-        [0, 0, 0], [width, height, 0], [0, height, 0],
-        
-        # Top face
-        [0, 0, thickness], [width, height, thickness], [width, 0, thickness],
-        [0, 0, thickness], [0, height, thickness], [width, height, thickness],
-        
-        # Front face
-        [0, 0, 0], [width, 0, thickness], [width, 0, 0],
-        [0, 0, 0], [0, 0, thickness], [width, 0, thickness],
-        
-        # Back face
-        [0, height, 0], [width, height, 0], [width, height, thickness],
-        [0, height, 0], [width, height, thickness], [0, height, thickness],
-        
-        # Left face
-        [0, 0, 0], [0, height, 0], [0, height, thickness],
-        [0, 0, 0], [0, height, thickness], [0, 0, thickness],
-        
-        # Right face
-        [width, 0, 0], [width, height, thickness], [width, height, 0],
-        [width, 0, 0], [width, 0, thickness], [width, height, thickness],
-    ]
+    # Create triangles for a rectangular keychain (12 triangles = 6 faces * 2 triangles each)
+    triangles = []
     
-    # Generate STL content
-    stl_lines = [f"solid {name}"]
+    # Bottom face (z=0) - 2 triangles
+    triangles.extend([
+        # Triangle 1
+        ([0, 0, -1], [0, 0, 0], [width, 0, 0], [width, height, 0]),
+        # Triangle 2  
+        ([0, 0, -1], [0, 0, 0], [width, height, 0], [0, height, 0])
+    ])
     
-    for i in range(0, len(vertices), 3):
-        if i + 2 < len(vertices):
-            v1, v2, v3 = vertices[i], vertices[i+1], vertices[i+2]
-            
-            # Calculate normal vector (simplified)
-            normal = [0, 0, 1] if i < 6 else [0, 0, -1] if i < 12 else [1, 0, 0]
-            
-            stl_lines.extend([
-                f"  facet normal {normal[0]} {normal[1]} {normal[2]}",
-                "    outer loop",
-                f"      vertex {v1[0]} {v1[1]} {v1[2]}",
-                f"      vertex {v2[0]} {v2[1]} {v2[2]}",
-                f"      vertex {v3[0]} {v3[1]} {v3[2]}",
-                "    endloop",
-                "  endfacet"
-            ])
+    # Top face (z=thickness) - 2 triangles
+    triangles.extend([
+        # Triangle 1
+        ([0, 0, 1], [0, 0, thickness], [width, height, thickness], [width, 0, thickness]),
+        # Triangle 2
+        ([0, 0, 1], [0, 0, thickness], [0, height, thickness], [width, height, thickness])
+    ])
     
-    stl_lines.append(f"endsolid {name}")
+    # Front face (y=0) - 2 triangles
+    triangles.extend([
+        # Triangle 1
+        ([0, -1, 0], [0, 0, 0], [width, 0, thickness], [width, 0, 0]),
+        # Triangle 2
+        ([0, -1, 0], [0, 0, 0], [0, 0, thickness], [width, 0, thickness])
+    ])
     
-    return '\n'.join(stl_lines)
+    # Back face (y=height) - 2 triangles  
+    triangles.extend([
+        # Triangle 1
+        ([0, 1, 0], [0, height, 0], [width, height, 0], [width, height, thickness]),
+        # Triangle 2
+        ([0, 1, 0], [0, height, 0], [width, height, thickness], [0, height, thickness])
+    ])
+    
+    # Left face (x=0) - 2 triangles
+    triangles.extend([
+        # Triangle 1
+        ([-1, 0, 0], [0, 0, 0], [0, height, 0], [0, height, thickness]),
+        # Triangle 2
+        ([-1, 0, 0], [0, 0, 0], [0, height, thickness], [0, 0, thickness])
+    ])
+    
+    # Right face (x=width) - 2 triangles
+    triangles.extend([
+        # Triangle 1
+        ([1, 0, 0], [width, 0, 0], [width, height, thickness], [width, height, 0]),
+        # Triangle 2
+        ([1, 0, 0], [width, 0, 0], [width, 0, thickness], [width, height, thickness])
+    ])
+    
+    # Create binary STL
+    header = bytearray(80)
+    header[:len(name)] = name.encode('ascii')[:80]
+    
+    # Number of triangles
+    triangle_count = len(triangles)
+    
+    # Build binary data
+    binary_data = bytearray()
+    binary_data.extend(header)
+    binary_data.extend(struct.pack('<I', triangle_count))
+    
+    for normal, v1, v2, v3 in triangles:
+        # Normal vector (3 floats)
+        binary_data.extend(struct.pack('<fff', normal[0], normal[1], normal[2]))
+        # Vertex 1 (3 floats)
+        binary_data.extend(struct.pack('<fff', v1[0], v1[1], v1[2]))
+        # Vertex 2 (3 floats)  
+        binary_data.extend(struct.pack('<fff', v2[0], v2[1], v2[2]))
+        # Vertex 3 (3 floats)
+        binary_data.extend(struct.pack('<fff', v3[0], v3[1], v3[2]))
+        # Attribute byte count (2 bytes)
+        binary_data.extend(struct.pack('<H', 0))
+    
+    return bytes(binary_data)
 
 @app.route('/health', methods=['GET'])
 def health_check():

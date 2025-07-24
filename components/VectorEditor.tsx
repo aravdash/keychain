@@ -48,20 +48,19 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
     canvas.clear()
     canvas.backgroundColor = 'white'
 
-    // Create a path from the SVG path data
+    console.log('Loading template:', template.name, 'SVG:', template.svgPath)
+
+    // First, try to load the actual vectorized path if it exists
     try {
-      console.log('Loading template:', template.name, 'SVG:', template.svgPath)
-      
-      // The SVG paths from the backend are designed for smaller coordinate systems
-      // We need to scale and position them properly
+      // Create a filled path from the SVG data
       const path = new fabric.Path(template.svgPath, {
         left: 0,
         top: 0,
-        fill: 'transparent',
+        fill: selectedColor,  // Fill the shape instead of just stroke
         stroke: selectedColor,
-        strokeWidth: strokeWidth,
-        scaleX: 15, // Increased scale for better visibility
-        scaleY: 15,
+        strokeWidth: 1,
+        scaleX: 1.5,  // Better scaling for visibility
+        scaleY: 1.5,
         selectable: true,
         hasControls: true,
         hasBorders: true,
@@ -73,36 +72,32 @@ export default function VectorEditor({ template, onBack, onStartOver }: VectorEd
       canvas.centerObject(path)
       canvas.renderAll()
       
-      console.log('Template loaded successfully')
+      console.log('Template loaded successfully as filled shape')
     } catch (error) {
       console.error('Error loading SVG path:', error)
       console.log('Fallback: Creating simple shape for template:', template.name)
       
-      // Fallback: create different shapes based on template name
+      // Enhanced fallback shapes with proper fills
       let fallbackShape;
       
       if (template.name.toLowerCase().includes('heart')) {
-        // Create a heart-like shape
         fallbackShape = new fabric.Path('M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 C2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 C19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z', {
-          left: 200, top: 150, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          left: 200, top: 150, fill: selectedColor, stroke: selectedColor, strokeWidth: strokeWidth,
           scaleX: 8, scaleY: 8, selectable: true, hasControls: true, hasBorders: true,
         })
       } else if (template.name.toLowerCase().includes('star')) {
-        // Create a star shape
         fallbackShape = new fabric.Path('M12,2l3.09,6.26L22,9.27l-5,4.87 l1.18,6.88L12,17.77l-6.18,3.25L7,14.14 L2,9.27l6.91-1.01L12,2z', {
-          left: 200, top: 150, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          left: 200, top: 150, fill: selectedColor, stroke: selectedColor, strokeWidth: strokeWidth,
           scaleX: 8, scaleY: 8, selectable: true, hasControls: true, hasBorders: true,
         })
       } else if (template.name.toLowerCase().includes('circle')) {
-        // Create a circle
         fallbackShape = new fabric.Circle({
-          left: 250, top: 150, radius: 50, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          left: 250, top: 150, radius: 50, fill: selectedColor, stroke: selectedColor, strokeWidth: strokeWidth,
           selectable: true, hasControls: true, hasBorders: true,
         })
       } else {
-        // Default rectangle
         fallbackShape = new fabric.Rect({
-          left: 200, top: 150, width: 200, height: 100, fill: 'transparent', stroke: selectedColor, strokeWidth: strokeWidth,
+          left: 200, top: 150, width: 200, height: 100, fill: selectedColor, stroke: selectedColor, strokeWidth: strokeWidth,
           selectable: true, hasControls: true, hasBorders: true,
         })
       }
