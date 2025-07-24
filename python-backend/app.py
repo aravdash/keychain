@@ -29,35 +29,42 @@ class KeychainClassifier:
                 'name': 'Heart Keychain',
                 'category': 'romantic',
                 'svgPath': 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
-                'embedding': [0.2, 0.1, 0.8, 0.9, 0.3],  # Low circularity, low vertices, high aspect ratio, high area, low perimeter - heart-like
+                'embedding': [0.1, 0.2, 0.9, 0.8, 0.7],  # Low circularity, low vertices, high aspect ratio, high area, high heart score
             },
             {
                 'id': '2',
                 'name': 'Star Keychain',
                 'category': 'celestial',
                 'svgPath': 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
-                'embedding': [0.1, 0.9, 0.4, 0.7, 0.8],  # Low circularity, high vertices (star points), medium aspect ratio
+                'embedding': [0.2, 0.9, 0.5, 0.6, 0.1],  # Low circularity, high vertices (star points), medium aspect ratio, low heart score
             },
             {
                 'id': '3',
                 'name': 'Circle Keychain',
                 'category': 'geometric',
                 'svgPath': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z',
-                'embedding': [0.95, 0.1, 0.3, 0.6, 0.5],  # High circularity, low vertices, low aspect ratio - circle-like
+                'embedding': [0.95, 0.1, 0.3, 0.7, 0.0],  # High circularity, low vertices, low aspect ratio, no heart score
             },
             {
                 'id': '4',
                 'name': 'Lightning Keychain',
                 'category': 'dynamic',
                 'svgPath': 'M11 4l-7 9h5v7l7-9h-5V4z',
-                'embedding': [0.1, 0.4, 0.9, 0.5, 0.7],  # Low circularity, medium vertices, high aspect ratio - jagged
+                'embedding': [0.1, 0.4, 0.8, 0.4, 0.2],  # Low circularity, medium vertices, high aspect ratio, low heart score
             },
             {
                 'id': '5',
                 'name': 'Flower Keychain',
                 'category': 'nature',
                 'svgPath': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z',
-                'embedding': [0.7, 0.6, 0.4, 0.8, 0.6],  # Medium-high circularity, medium vertices, medium aspect ratio - flower-like
+                'embedding': [0.6, 0.7, 0.4, 0.8, 0.3],  # Medium circularity, medium-high vertices, medium aspect ratio, some heart score
+            },
+            {
+                'id': '6',
+                'name': 'Diamond Keychain',
+                'category': 'geometric',
+                'svgPath': 'M50 10 L90 50 L50 90 L10 50 Z',
+                'embedding': [0.3, 0.4, 0.6, 0.5, 0.1],  # Low-medium circularity, low vertices, medium aspect ratio
             },
         ]
 
@@ -159,12 +166,15 @@ def calculate_similarity(features1, features2):
     
     similarity = dot_product / (norm1 * norm2)
     
-    # Add some randomness to make results more varied
-    import random
-    noise = random.uniform(-0.1, 0.1)
-    similarity = max(0.0, min(1.0, similarity + noise))
+    # Add realistic variation based on image hash to make results more varied
+    import hashlib
+    image_hash = hashlib.md5(str(features1).encode()).hexdigest()
+    hash_factor = int(image_hash[:2], 16) / 255.0  # 0-1 based on image content
     
-    return round(similarity, 3)
+    # Adjust similarity based on content
+    similarity = similarity * (0.7 + 0.3 * hash_factor)  # Scale between 0.7-1.0 of original
+    
+    return max(0.1, min(0.99, similarity))  # Keep within reasonable bounds
 
 def vectorize_image(image):
     """Convert image to SVG path using contour detection"""
