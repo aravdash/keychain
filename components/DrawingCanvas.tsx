@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { fabric } from 'fabric'
-import { Upload, Palette, RotateCcw, Download, Loader2, Zap } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Upload, Palette, RotateCcw, Loader2, Zap } from 'lucide-react'
 import { InputMode, Template, VectorizedResult } from '@/app/page'
 
 interface DrawingCanvasProps {
@@ -14,130 +13,156 @@ interface DrawingCanvasProps {
 
 export default function DrawingCanvas({ mode, onResult, onProcessingChange, isProcessing }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const fabricCanvasRef = useRef<fabric.Canvas | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  const [hasDrawn, setHasDrawn] = useState(false)
   const [brushSize, setBrushSize] = useState(5)
+  const [brushColor, setBrushColor] = useState('#000000')
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
-  const [canvasReady, setCanvasReady] = useState(false)
 
-  // Initialize canvas once
+  // Initialize canvas and context
   useEffect(() => {
-    if (!canvasRef.current || fabricCanvasRef.current) return
-
-    const initCanvas = async () => {
-      try {
-        console.log('Initializing canvas...')
-        
-        const canvas = new fabric.Canvas(canvasRef.current!, {
-          isDrawingMode: mode === 'draw',
-          width: 600,
-          height: 400,
-          backgroundColor: '#ffffff',
-        })
-
-        // Configure drawing brush
-        canvas.freeDrawingBrush.width = brushSize
-        canvas.freeDrawingBrush.color = '#000000'
-        
-        // Event handlers
-        canvas.on('path:created', (e) => {
-          console.log('Drawing path created')
-          setIsDrawing(true)
-        })
-        
-        canvas.on('object:added', () => {
-          setIsDrawing(true)
-        })
-
-        fabricCanvasRef.current = canvas
-        setCanvasReady(true)
-        
-        console.log('Canvas initialized successfully')
-      } catch (error) {
-        console.error('Canvas initialization error:', error)
-      }
-    }
-
-    initCanvas()
-
-    return () => {
-      if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.dispose()
-        fabricCanvasRef.current = null
-      }
-      setCanvasReady(false)
-    }
+    const canvas = canvasRef.current
+    if (!canvas) return
+    
+    // Set canvas resolution
+    canvas.width = 600
+    canvas.height = 400
+    
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    // Fill background white
+    ctx.fillStyle = 'white'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    // Set default drawing styles
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = brushSize
+    ctx.strokeStyle = brushColor
   }, [])
 
-  // Update brush size
+  // Update brush style on brushSize or brushColor change
   useEffect(() => {
-    if (fabricCanvasRef.current && canvasReady) {
-      fabricCanvasRef.current.freeDrawingBrush.width = brushSize
-    }
-  }, [brushSize, canvasReady])
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.lineWidth = brushSize
+    ctx.strokeStyle = brushColor
+  }, [brushSize, brushColor])
 
-  // Update drawing mode
-  useEffect(() => {
-    if (fabricCanvasRef.current && canvasReady) {
-      fabricCanvasRef.current.isDrawingMode = mode === 'draw'
-    }
-  }, [mode, canvasReady])
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file || !fabricCanvasRef.current || !canvasReady) return
-
-    if (file.type === 'image/png' || file.type === 'image/jpeg') {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const imageUrl = e.target?.result as string
-        setUploadedImage(imageUrl)
-        
-        fabric.Image.fromURL(imageUrl, (img) => {
-          if (!fabricCanvasRef.current) return
-          
-          fabricCanvasRef.current.clear()
-          
-          // Scale image to fit canvas
-          const canvas = fabricCanvasRef.current
-          const canvasWidth = canvas.getWidth()
-          const canvasHeight = canvas.getHeight()
-          
-          const scale = Math.min(
-            canvasWidth / (img.width || 1),
-            canvasHeight / (img.height || 1)
-          ) * 0.8
-          
-          img.scale(scale)
-          img.center()
-          canvas.add(img)
-          canvas.renderAll()
-          setIsDrawing(true)
-        })
-      }
-      reader.readAsDataURL(file)
+  // Helper to get relative pointer coords
+  const getCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     }
   }
 
-  const clearCanvas = () => {
-    if (!fabricCanvasRef.current || !canvasReady) return
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (mode !== 'draw') return
     
-    fabricCanvasRef.current.clear()
-    fabricCanvasRef.current.backgroundColor = '#ffffff'
-    fabricCanvasRef.current.renderAll()
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    const { x, y } = getCoords(e)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    setIsDrawing(true)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || mode !== 'draw') return
+    
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    const { x, y } = getCoords(e)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+  }
+
+  const handlePointerUp = () => {
+    if (isDrawing) {
+      setHasDrawn(true)
+    }
     setIsDrawing(false)
+  }
+
+  // Handle file upload
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || (file.type !== 'image/png' && file.type !== 'image/jpeg')) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const imageUrl = e.target?.result as string
+      setUploadedImage(imageUrl)
+      
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      const img = new Image()
+      img.onload = () => {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.fillStyle = 'white'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        
+        // Scale image to fit canvas
+        const scale = Math.min(
+          canvas.width / img.width,
+          canvas.height / img.height
+        ) * 0.8
+        
+        const scaledWidth = img.width * scale
+        const scaledHeight = img.height * scale
+        const x = (canvas.width - scaledWidth) / 2
+        const y = (canvas.height - scaledHeight) / 2
+        
+        ctx.drawImage(img, x, y, scaledWidth, scaledHeight)
+        setHasDrawn(true)
+      }
+      img.src = imageUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Clear canvas
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = 'white'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    setHasDrawn(false)
     setUploadedImage(null)
   }
 
+  // Process image for AI classification
   const processImage = async () => {
-    if (!fabricCanvasRef.current || !isDrawing || !canvasReady) return
+    const canvas = canvasRef.current
+    if (!canvas || !hasDrawn) return
 
     onProcessingChange(true)
 
     try {
       // Get canvas data
-      const imageData = fabricCanvasRef.current.toDataURL('image/png')
+      const imageData = canvas.toDataURL('image/png')
       
       console.log('Sending image for classification...')
       
@@ -190,8 +215,8 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
           },
         ],
         vectorized: {
-          svgPath: fabricCanvasRef.current?.toSVG() || 'M50 50 L100 100 L150 50 L100 0 Z',
-          originalImage: fabricCanvasRef.current?.toDataURL('image/png') || '',
+          svgPath: canvas.toDataURL('image/png'), // Use actual canvas data
+          originalImage: canvas.toDataURL('image/png'),
         },
       }
       onResult(mockResult)
@@ -253,17 +278,21 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
           </div>
         )}
 
-        <div className={`canvas-container ${isDrawing ? 'active' : ''} p-4 bg-gray-50 rounded-lg`}>
+        <div className={`canvas-container ${hasDrawn ? 'active' : ''} p-4 bg-gray-50 rounded-lg`}>
           <canvas
             ref={canvasRef}
-            className="border border-gray-300 rounded-lg bg-white"
+            className="border border-gray-300 rounded-lg bg-white touch-none"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
           />
         </div>
 
         <div className="mt-6 flex gap-4">
           <button
             onClick={processImage}
-            disabled={!isDrawing || isProcessing}
+            disabled={!hasDrawn || isProcessing}
             className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isProcessing ? (

@@ -314,89 +314,201 @@ def export_stl():
         return jsonify({'error': str(e)}), 500
 
 def generate_binary_stl(svg_data, name, thickness):
-    """Generate a proper binary STL file"""
+    """Generate a proper binary STL file from SVG path"""
     import struct
+    import re
     
-    width = 20.0
-    height = 15.0
     thickness = float(thickness)
     
-    # Create triangles for a rectangular keychain (12 triangles = 6 faces * 2 triangles each)
-    triangles = []
+    # Try to parse SVG path data to get actual shape
+    vertices = []
     
-    # Bottom face (z=0) - 2 triangles
-    triangles.extend([
-        # Triangle 1
-        ([0, 0, -1], [0, 0, 0], [width, 0, 0], [width, height, 0]),
-        # Triangle 2  
-        ([0, 0, -1], [0, 0, 0], [width, height, 0], [0, height, 0])
-    ])
+    # Extract path data from SVG
+    if svg_data and isinstance(svg_data, str):
+        # Look for path elements in SVG
+        path_match = re.search(r'd="([^"]+)"', svg_data)
+        if path_match:
+            path_data = path_match.group(1)
+            vertices = parse_svg_path_to_vertices(path_data, thickness)
     
-    # Top face (z=thickness) - 2 triangles
-    triangles.extend([
-        # Triangle 1
-        ([0, 0, 1], [0, 0, thickness], [width, height, thickness], [width, 0, thickness]),
-        # Triangle 2
-        ([0, 0, 1], [0, 0, thickness], [0, height, thickness], [width, height, thickness])
-    ])
-    
-    # Front face (y=0) - 2 triangles
-    triangles.extend([
-        # Triangle 1
-        ([0, -1, 0], [0, 0, 0], [width, 0, thickness], [width, 0, 0]),
-        # Triangle 2
-        ([0, -1, 0], [0, 0, 0], [0, 0, thickness], [width, 0, thickness])
-    ])
-    
-    # Back face (y=height) - 2 triangles  
-    triangles.extend([
-        # Triangle 1
-        ([0, 1, 0], [0, height, 0], [width, height, 0], [width, height, thickness]),
-        # Triangle 2
-        ([0, 1, 0], [0, height, 0], [width, height, thickness], [0, height, thickness])
-    ])
-    
-    # Left face (x=0) - 2 triangles
-    triangles.extend([
-        # Triangle 1
-        ([-1, 0, 0], [0, 0, 0], [0, height, 0], [0, height, thickness]),
-        # Triangle 2
-        ([-1, 0, 0], [0, 0, 0], [0, height, thickness], [0, 0, thickness])
-    ])
-    
-    # Right face (x=width) - 2 triangles
-    triangles.extend([
-        # Triangle 1
-        ([1, 0, 0], [width, 0, 0], [width, height, thickness], [width, height, 0]),
-        # Triangle 2
-        ([1, 0, 0], [width, 0, 0], [width, 0, thickness], [width, height, thickness])
-    ])
+    # If no valid path data, create default keychain shape
+    if not vertices:
+        vertices = create_default_keychain_vertices(thickness)
     
     # Create binary STL
     header = bytearray(80)
     header[:len(name)] = name.encode('ascii')[:80]
     
     # Number of triangles
-    triangle_count = len(triangles)
+    triangle_count = len(vertices) // 3
     
     # Build binary data
     binary_data = bytearray()
     binary_data.extend(header)
     binary_data.extend(struct.pack('<I', triangle_count))
     
-    for normal, v1, v2, v3 in triangles:
-        # Normal vector (3 floats)
-        binary_data.extend(struct.pack('<fff', normal[0], normal[1], normal[2]))
-        # Vertex 1 (3 floats)
-        binary_data.extend(struct.pack('<fff', v1[0], v1[1], v1[2]))
-        # Vertex 2 (3 floats)  
-        binary_data.extend(struct.pack('<fff', v2[0], v2[1], v2[2]))
-        # Vertex 3 (3 floats)
-        binary_data.extend(struct.pack('<fff', v3[0], v3[1], v3[2]))
-        # Attribute byte count (2 bytes)
-        binary_data.extend(struct.pack('<H', 0))
+    for i in range(0, len(vertices), 3):
+        if i + 2 < len(vertices):
+            v1, v2, v3 = vertices[i], vertices[i+1], vertices[i+2]
+            
+            # Calculate normal vector
+            normal = calculate_normal(v1, v2, v3)
+            
+            # Pack triangle data
+            binary_data.extend(struct.pack('<fff', normal[0], normal[1], normal[2]))
+            binary_data.extend(struct.pack('<fff', v1[0], v1[1], v1[2]))
+            binary_data.extend(struct.pack('<fff', v2[0], v2[1], v2[2]))
+            binary_data.extend(struct.pack('<fff', v3[0], v3[1], v3[2]))
+            binary_data.extend(struct.pack('<H', 0))  # Attribute byte count
     
     return bytes(binary_data)
+
+def parse_svg_path_to_vertices(path_data, thickness):
+    """Parse SVG path data and convert to 3D vertices"""
+    import re
+    
+    # Extract coordinates from path data
+    coords = []
+    
+    # Find all coordinate pairs (simplified parsing)
+    numbers = re.findall(r'-?\d+\.?\d*', path_data)
+    
+    # Group numbers into coordinate pairs
+    for i in range(0, len(numbers) - 1, 2):
+        try:
+            x = float(numbers[i]) * 0.5  # Scale down
+            y = float(numbers[i + 1]) * 0.5
+            coords.append([x, y])
+        except (ValueError, IndexError):
+            continue
+    
+    if len(coords) < 3:
+        return []
+    
+    # Create 3D vertices from 2D path
+    vertices = []
+    
+    # Create triangulated mesh from the path coordinates
+    # This is a simplified triangulation - for a complete solution you'd use a proper triangulation library
+    
+    # Bottom face triangles
+    center_bottom = [sum(p[0] for p in coords) / len(coords), sum(p[1] for p in coords) / len(coords), 0]
+    
+    for i in range(len(coords)):
+        next_i = (i + 1) % len(coords)
+        vertices.extend([
+            center_bottom,
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], 0]
+        ])
+    
+    # Top face triangles
+    center_top = [center_bottom[0], center_bottom[1], thickness]
+    
+    for i in range(len(coords)):
+        next_i = (i + 1) % len(coords)
+        vertices.extend([
+            center_top,
+            [coords[next_i][0], coords[next_i][1], thickness],
+            [coords[i][0], coords[i][1], thickness]
+        ])
+    
+    # Side faces
+    for i in range(len(coords)):
+        next_i = (i + 1) % len(coords)
+        
+        # Two triangles per side face
+        vertices.extend([
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], 0],
+            [coords[next_i][0], coords[next_i][1], thickness]
+        ])
+        
+        vertices.extend([
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], thickness],
+            [coords[i][0], coords[i][1], thickness]
+        ])
+    
+    return vertices
+
+def create_default_keychain_vertices(thickness):
+    """Create default keychain shape vertices"""
+    # Create a more interesting default shape (hexagon)
+    import math
+    
+    vertices = []
+    radius = 15.0
+    sides = 6
+    
+    # Generate hexagon coordinates
+    coords = []
+    for i in range(sides):
+        angle = 2 * math.pi * i / sides
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        coords.append([x, y])
+    
+    # Bottom face
+    center_bottom = [0, 0, 0]
+    for i in range(sides):
+        next_i = (i + 1) % sides
+        vertices.extend([
+            center_bottom,
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], 0]
+        ])
+    
+    # Top face
+    center_top = [0, 0, thickness]
+    for i in range(sides):
+        next_i = (i + 1) % sides
+        vertices.extend([
+            center_top,
+            [coords[next_i][0], coords[next_i][1], thickness],
+            [coords[i][0], coords[i][1], thickness]
+        ])
+    
+    # Side faces
+    for i in range(sides):
+        next_i = (i + 1) % sides
+        
+        vertices.extend([
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], 0],
+            [coords[next_i][0], coords[next_i][1], thickness]
+        ])
+        
+        vertices.extend([
+            [coords[i][0], coords[i][1], 0],
+            [coords[next_i][0], coords[next_i][1], thickness],
+            [coords[i][0], coords[i][1], thickness]
+        ])
+    
+    return vertices
+
+def calculate_normal(v1, v2, v3):
+    """Calculate normal vector for a triangle"""
+    import numpy as np
+    
+    # Convert to numpy arrays
+    v1, v2, v3 = np.array(v1), np.array(v2), np.array(v3)
+    
+    # Calculate vectors
+    vec1 = v2 - v1
+    vec2 = v3 - v1
+    
+    # Cross product
+    normal = np.cross(vec1, vec2)
+    
+    # Normalize
+    length = np.linalg.norm(normal)
+    if length > 0:
+        normal = normal / length
+    else:
+        normal = np.array([0, 0, 1])  # Default up vector
+    
+    return normal.tolist()
 
 @app.route('/health', methods=['GET'])
 def health_check():
