@@ -40,21 +40,31 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
         console.log('Path created:', e.path)
         setIsDrawing(true)
         // Force canvas to render and maintain the drawing
-        canvas.renderAll()
-        canvas.calcOffset()
+        if (canvas && canvas.getContext) {
+          canvas.renderAll()
+          canvas.calcOffset()
+        }
       })
 
       // Prevent canvas from clearing drawings
       canvas.on('before:render', () => {
-        canvas.preserveObjectStacking = true
+        if (canvas) {
+          canvas.preserveObjectStacking = true
+        }
       })
 
       fabricCanvasRef.current = canvas
       
-      // Force initial render
+      // Force initial render with safety checks
       setTimeout(() => {
-        canvas.renderAll()
-      }, 100)
+        if (canvas && canvas.getContext && canvas.renderAll) {
+          try {
+            canvas.renderAll()
+          } catch (error) {
+            console.warn('Canvas render error:', error)
+          }
+        }
+      }, 200) // Increased timeout for better initialization
     }
 
     return () => {
@@ -87,7 +97,7 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
         
         if (fabricCanvasRef.current) {
           fabric.Image.fromURL(imageUrl, (img) => {
-            if (fabricCanvasRef.current) {
+            if (fabricCanvasRef.current && fabricCanvasRef.current.getContext) {
               fabricCanvasRef.current.clear()
               
               // Scale image to fit canvas
@@ -103,8 +113,14 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
               img.scale(scale)
               img.center()
               canvas.add(img)
-              canvas.renderAll()
-              setIsDrawing(true)
+              
+              // Safe render
+              try {
+                canvas.renderAll()
+                setIsDrawing(true)
+              } catch (error) {
+                console.warn('Canvas render error during image upload:', error)
+              }
             }
           })
         }
@@ -114,23 +130,39 @@ export default function DrawingCanvas({ mode, onResult, onProcessingChange, isPr
   }
 
   const clearCanvas = () => {
-    if (fabricCanvasRef.current) {
-      fabricCanvasRef.current.clear()
-      fabricCanvasRef.current.backgroundColor = 'white'
-      fabricCanvasRef.current.renderAll()
-      setIsDrawing(false)
-      setUploadedImage(null)
+    if (fabricCanvasRef.current && fabricCanvasRef.current.getContext) {
+      try {
+        fabricCanvasRef.current.clear()
+        fabricCanvasRef.current.backgroundColor = 'white'
+        fabricCanvasRef.current.renderAll()
+        setIsDrawing(false)
+        setUploadedImage(null)
+      } catch (error) {
+        console.warn('Canvas clear error:', error)
+        setIsDrawing(false)
+        setUploadedImage(null)
+      }
     }
   }
 
   const processImage = async () => {
     if (!fabricCanvasRef.current || !isDrawing) return
 
+    // Additional safety check
+    if (!fabricCanvasRef.current.getContext) {
+      console.warn('Canvas not ready for processing')
+      return
+    }
+
     onProcessingChange(true)
 
     try {
-      // Convert canvas to image data
+      // Convert canvas to image data with safety check
       const imageData = fabricCanvasRef.current.toDataURL('image/png')
+      
+      if (!imageData || imageData === 'data:,') {
+        throw new Error('Canvas is empty or not ready')
+      }
       
       // Send to backend for classification and vectorization
       const response = await fetch('/api/classify', {
